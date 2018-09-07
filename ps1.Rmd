@@ -1,0 +1,190 @@
+---
+title: "Problem Set 1 - STAT 243"
+author: "Malvika Rajeev"
+date: "9/6/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The solutions to problem set 1.
+
+
+
+##Question 1 part (b) and (c)
+
+First two steps:
+
+```{bash eval=FALSE}
+cd ~/Desktop/statistical_computing/repository  #this is my main directory
+mkdir temp
+cd temp
+
+```
+
+
+
+
+To actually understand and visualise the dataset, I looked through the data for 2018, and then to create the boxplot I grouped the data for the last five years.
+
+
+
+
+```{bash eval=FALSE}
+curl -O https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/2018.csv.gz
+gunzip 2018.csv.gz
+head 2018.csv
+```
+
+
+The first column clearly indicates some kind of an area code, and the third column has specific temperature indications.
+
+
+
+###Finding the area code using the text file on the website
+
+Again, using curl, I downlaoded the stations text file.
+
+```{bash}
+curl -O https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/ghcnd-stations.txt;
+mv ghcnd-stations.txt stations.txt
+```
+
+
+
+After this, I just looked for the line with the word "DEATH" and stored the first field (the area code) as a variable.
+
+```{bash eval}
+grep Death stations.txt
+code=$(grep DEATH stations.txt | cut -d" " -f1)
+echo "$code"
+```
+
+
+
+Then, looking for the code in the 2018 file and then using pipes to look for "TMAX" and the month March. (and saving the segmented part as a new file)
+
+```{bash eval=FALSE}
+grep $code 2018.csv | grep TMAX | grep ,201803> 2018marchtmax.csv
+head 2018marchtmax.csv
+```
+
+
+
+
+
+##Question 1 part (d)
+
+The main function follows the same logic as above, except for function syntax, storing new arguments, etc.
+As specificed in the question, the first, second, third, fourth and fifth arguments are the location, weather variable, start year, end year and month respectively.
+
+````{bash eval=FALSE}
+function get_weather(){
+  curl -O https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/ghcnd-stations.txt
+  mv ghcnd-stations.txt stations.txt
+  code=$(grep $1 stations.txt | cut -d" " -f1)
+  if ["$1"=="-h"]; then; echo "Please enter a valid argument. Enter the location as specified in       https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/ghcnd-stations.txt"; return 1; fi 
+  if [ -z "$code" ]; then; 
+	echo "Weather station not entered correctly. Please enter in ALL CAPS."; return 1; fi
+  if [ "$#" -ne 5 ]; then; echo "Enter the correct number of arguments, in the correct order"; return 1; fi
+
+  for i in $(seq $3 $4)
+	do
+	curl -O https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/by_year/$i.csv.gz
+	gunzip $i.csv.gz
+  done
+ 
+  for i in $(seq $3 $4); do
+	grep "$code" "$i".csv | grep ,"$i""$5"" | grep "$2">"$1"and"$2"and"$5".csv;
+	rm "$i".csv
+	done
+}
+````
+
+
+###PLOTTING THE BOXPLOT
+
+I narrowed the data for March, 2014-2018,(tmax), basically exactly like I did for 2018, except that I created a for loop:
+
+````{bash eval=FALSE}
+for i in $(seq 2014 2018)
+do 
+curl -O https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/by_year/"$i".csv.gz
+gunzip $i.csv.gz
+done
+````
+
+
+Then, saving all the data according to the specifications, and concatenating into a single CSV file.
+````{bash eval=FALSE}
+for i in $(seq 2014 2018)
+do
+grep "$code" "$i".csv | grep TMAX | grep "$i"03 > "$i"marchtmax.csv
+rm $i.csv
+done
+cat 201*marchtmax.csv > plotdata.csv
+for i in $(seq 2014 2018)
+do
+rm "$i"marchtmax.csv
+done 
+````
+
+````{bash}
+head plotdata.csv
+````
+
+
+Now, creating the boxplot using R:
+````{r}
+library(readr)
+marchdata <- read_csv("plotdata.csv",col_names = FALSE)
+date <- marchdata$X2
+maxtemp <- marchdata$X4
+
+
+library(ggplot2)
+ggplot() + geom_boxplot(aes(x=factor(substr(date, 7, 8)), y=maxtemp))+labs(x="Days of March",y="Maximum Temperature")
+
+````
+
+  
+
+##PART 4 - Finding the text files.
+
+For this part, I downloaded the source code of the page and have it read as a standard text file. 
+After that, we loop through all the lines after segmenting it on the basis of .txt and using the sed command to replace the surrounding html chunks.
+
+````{bash}
+page=$(curl -s https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/)
+
+for t in $(echo "$page" | grep ".txt" | sed 's/^.*\(href.*\)/\1/g' | sed 's/.txt.*//' | cut -c 7-)
+do
+curl -O https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/${t}.txt
+echo "Downloading ${t}.txt"
+done
+````
+\newpage
+
+
+##PART 5(B)
+
+Basically used the existing R object "data", converted it into a numpy array, then summed it along the column. 
+```{r}
+
+library(reticulate)
+np <- import("numpy", convert = FALSE)
+arr <- np$array(c(date))
+sum <- arr$cumsum()
+print(sum)
+py_to_r(sum)
+```
+
+
+##****END
+
+
+
+
+
