@@ -1,0 +1,199 @@
+---
+title: "problem set 2"
+author: "Malvika Rajeev"
+date: "9/11/2018"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Question 1
+
+Basically, whoever reads your code (possibly you in the future), should find it coherent. This means following conventions on naming, style etc. Small functions that have a specific utlity should be created and then collated to a bigger function. Variables' names shold be meaningful and succint. Functionality tests like assert and testthat should be made use of for efficiency.
+
+#Question 2
+
+
+```{r}
+n <- 1e7
+a <- matrix(rnorm(n), ncol = 100)
+b <- matrix(rnorm(n), ncol = 1)
+b <- round(b, 10)
+a <- round(a, 10)
+```
+
+I wanted to see the difference between sorting it with a multicharatcer delimiter.
+Also, I tried a separate code where I found out the difference between files stored with different delimiters (',',/, and '//'). 
+
+##part(a)
+
+10M numbers * 1 byte = 12 bytes each, 10M commas (or a new line) = 1 byte
+So total = between 130M to 140M
+
+````{r}
+write.table(a, file = '/tmp/tmp.csv', quote=FALSE, row.names=FALSE, col.names = FALSE, sep=',')
+write.table(a, file = '/tmp/tmp!.csv', quote=FALSE, row.names=FALSE, col.names = FALSE, sep='!!') 
+write.table(b, file = '/tmp/tmp2.csv', quote=FALSE, row.names=FALSE, col.names = FALSE)
+save(a, file = '/tmp/tmp.Rda', compress = FALSE)
+save(b, file = '/tmp/tmp2.Rda', compress = FALSE)
+
+file.size('/tmp/tmp.csv') - file.size('/tmp/tmp!.csv') #theres a difference of 9900000 bytes!  #I tried this before I find out about bytes
+file.size('/tmp/tmp.Rda')
+file.size('/tmp/tmp2.csv')
+file.size('/tmp/tmp2.Rda')
+
+write.table(c(a), file = '/tmp/tmp3.csv', quote=FALSE, row.names=FALSE, col.names = FALSE)
+file.size('/tmp/tmp3.csv')
+
+````
+
+##part(b) 
+There won't be a difference in size because commas have been replaced by new line characters.
+
+##part(c)
+So read.csv determines type too (as opposed to scan). When you specify the type of columns, read.csv obviously takes less time. Load just reloads the data already saved as Rda by the 'save' function. 
+
+````{r}
+system.time(a0 <- read.csv('/tmp/tmp.csv', header = FALSE)) #took around 21 seconds.
+system.time(a1 <- scan('/tmp/tmp.csv', sep = ',')) #like 8 seconds?Unlike the read.table() function, the scan() function returns a list or a vector, not a dataframe.
+
+
+system.time(a0 <- read.csv('/tmp/tmp.csv',header = FALSE, colClasses = 'numeric')) #when R is told to read the columns as numeric data, it saves it the time to actually go through the columns and determine its type, thereby saving processing time.
+system.time(a1 <- scan('/tmp/tmp.csv', sep = ',')) #this is identical to first case?
+
+system.time(a1 <- scan('/tmp/tmp.csv', sep = ',')) #same
+system.time(load('/tmp/tmp.Rda')) #Reload datasets written with the function save. this isnt really reading a new file, so much as it is repeating a command already passed.
+
+````
+
+
+##part(d)
+````{r}
+save(a, file = '/tmp/tmp1.Rda')
+file.size('/tmp/tmp1.Rda')
+b <- rep(rnorm(1), 1e7)
+save(b, file = '/tmp/tmp2.Rda') ##b is basially a number repeated 100000 times
+file.size('/tmp/tmp2.Rda')
+````
+
+Rda finds it easier to compress values that are the same vector again and again (through duplicaiton), as opposed to different values.
+
+
+##______________________________
+
+#Question 3
+
+##part(a)
+
+
+```{r}
+##creating a function
+library(rvest)
+
+scholarpage <- function(scholar_name){
+  URL="https://scholar.google.com/scholar?hl=en&as_sdt=0%2C5&q="
+  name=gsub(" ", "+", scholar_name)       #replace the spaces in input with a plus sign
+  URL2 <- paste(URL,name,sep="")           #concatenate the expression to make it URL-friendly
+  
+  
+  html <- read_html(URL2)
+  tbls <- html_table(html_nodes(html, "table"))
+  links <- html %>% html_nodes(xpath = "//a[@href]") %>%     #find all the links in the page
+    html_attr('href')
+  
+  index=as.list(grep("user=[[:alpha:]]+.+=", links, value=FALSE)) #making a list of links with "user="
+  scholar_id <- unlist(strsplit(links[as.integer(index[1])],'='))[[2]] #splitting the first link by '='
+  #using the second field
+  page <- paste("https://scholar.google.com",links[as.integer(index[1])], sep = "") #required URL
+  #page
+  output <- read_html(page)      
+  return(output)
+}
+
+```
+
+
+##part(b)
+
+Upon inspection, I found that every field of the tabe of citations had a unique html tag (except of authors and citations, which were alternating)
+
+```{r}
+createdataset <- function(scholar_name){
+  library(assertthat)
+  is_legit <- function(x){
+  assert_that(is.character(scholar_name))  
+  }
+  assert_that(is_legit(scholar_name))
+  on_failure(is_legit) <- function(call, env){
+  paste0(deparse(call$x), " is not a name.") #error message
+  }
+  output <- scholarpage(scholar_name)  #calling the function I made earlier
+  title <- output %>% html_nodes(".gsc_a_t a") %>% html_text()    
+  title <- title[-1]
+  year <- output %>% html_nodes(".gsc_a_h.gsc_a_hc.gs_ibl") %>% html_text()
+  authors_journals <- output %>% html_nodes(".gsc_a_t .gs_gray") %>% html_text()
+  l=length(authors_journals)
+  a <- seq(2,l,2)
+  b <- seq(1,l,2)
+  authors <- authors_journals[b]
+  journals <- authors_journals[a]
+  citations <- output %>% html_nodes(".gsc_a_c ac") %>% html_text()
+  dataset2 <- cbind(title, year, authors, journals, citations)
+  
+  return(dataset2)
+}
+createdataset("Andrew Ng")
+
+```
+
+##Testing my function here
+
+```{r}
+####using testthat
+
+library(testthat)
+dat <- createdataset('Andrew Ng')
+
+#expect_length(nrow(dat), 20)
+test_that("Testing", {
+  
+  dat <- createdataset('Andrew Ng')
+  expect_is(createdataset("hey man"), 'matrix')
+  expect_error(createdataset(FALSE))
+})
+```
+
+
+#_________________________________
+
+#Question 4
+
+A robots.txt file is a set of instructions for the "robots" (codes in general) when they reach that website. Twitter and facebook are apparently not allowed to web crawl on Google scholars. Personally, I have no concern about the tools we used for this assignment because we're literally just fetching the data you anyway see in a cursory search.
+According to scholars.google.com/robots.txt, the actions we performed are allowed by the website. As far as ethics in webcrawling are concerned, it is essentially about ensuring you aren't violating the terms and conditions. I think it's hard to pinpoint exactly where you're being unethical outside of that stipulation though: where do you draw the line between unethical and ethical web crawling and outside (or even inside) the realm of legality? (and who assumes responsiblity when the fact that almost no personal users actually read legalities is a soft fact) I'm not too sure. It's also important to distinguish between web crawling and data breaches. If any such tools are being used to scrape through datasets/files online, its imperative to ensure their authenticity and that the fact they're available to public is intentional. 
+
+In India, there is a a very robust ID system called Aadhar. It basically has assigned a unique 12 digit number for every citizen (it is, for all intents and purposes, mandatory) and with it the names, addresses and believe it or not, biometric information. Intitally the way the data was believed to be stored is that there was no central repository of key value pair system. But it started getting used more, by private companies that would build on its API, routine hacks and data leaks have become prevalent, thanks to tools associated with web scraping and crawling.
+
+But then again I think this is a problematic issue of storing senstivie public data in open directories without having the legal minimum requirement of what constitutes best security practices for a website that deals with such data. So when I examine the function we all made, its obvious that webcrawling in itself cannot be labelled ethical or unethical - its the reason why you end up doing it.
+
+ 
+
+
+#________________________________________________
+
+
+
+
+
+  
+
+
+
+
+
+
+
