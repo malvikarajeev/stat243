@@ -1,0 +1,578 @@
+---
+title: "ps3"
+author: "Malvika Rajeev"
+date: "9/27/2018"
+output:
+  html_document:
+    df_print: paged
+---
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+##QUESTION 1
+
+After reading up on reproducilibility in scientific computation, I had a few thoughts. Generally speaking, 'reproducibility' of any scientific process depends on two things: whether it is at all reproducible, and the way it's manufactured.
+
+Replicating an experiment is becoming an important foundation of the scientific method. While it is important to value reproducibility, it raises two questions. Firstly, that the scientist is infact interested or even cares about bringing about reproducibility. Assuming that reproducible research is the main aim and the paper or the manuscript is the byproduct is a very heavy assumption. While the community in general may consider that 'unethical' etc, should the reputation of the scientist's work suffer? Should preconceived notions be excused in such cases? Secondly, experiments in social sciences have fundamental differences with those of physical sciences, but require the same if not more practice of computational (especially statistical) tools. The 'problem' of reproducibility then ceases to be one of following best practices. Some social studies cannot be repeated due to problems with the initial study, while others aren't replicable because the follow-up research did not follow the methods or use the same tools as the original study, or maybe that the study simply cannot be replicated? For example, a study of race and affirmative action performed at Stanford University was 'replicated' at the University of Amsterdam in the Netherlands, in another country with different racial diversity. When the study was later repeated at Stanford, the original published results were indeed replicated. (Source: How scientists are addressing the 'reproducibility problem' By Deborah Berry)
+
+I came accross a study that had to be retracted because of some minor error in the code that it used. The retraction read:
+"An in-house data reduction program introduced a change in sign for anomalous differences. This program, which was not part of a conventional data processing package, converted the anomalous pairs (I+ and I-) to (F- and F+, thereby introducing a sign change. As the diffraction data collected for each set of MsbA crystals1., 2., 3. were processed with the same program, the structures reported had the wrong hand".
+Instances like these stress upon the importance of having accurate computational tools for your study. And since programming, in general, is ever growing, dynamic and application based, accuracy can be thought of as a function of how many people can use your code and get the same results. This goes hand in hand with being updated with the open source online community, as such because the distinction between 'users' and 'core developers' isn't very rigid. The main benefit of following conventions is obvious: if code isn't easily readable, it is less conducive to modification and constructive criticism.
+
+I like researching and knowing exactly what my function is supposed to do beforehand by getting some domain knowledge. I also like code to be crisp and short. To do this I realise that sometimes my code gets confusing to read. Also, possibly because I don???t have a lot of experience, names of functions don???t seem as pressing to me, because that's contextual.
+
+#Cohort Linear Model 
+
+I read the housing model paper and the code, and I personally thought it was a good read. The github ReadMe was quite informative, and the code was neat and comprehensible, replete with comments, which is great. They even provide cleaned data set ready for download.
+In section however, during the discussion we saw that were some minor lapses, like undefined variables being used inside a function, but nothing majorly disastrous. Overall, I think this study is a great example of good coding practices. Even in the paper, they acknowledge the circumstances in which their study will not be entirely reproducible:
+"However, when thinking about external validity of the CLM, one should refer the two basic assumptions that this model was developed upon. Our first assumption that housing career increases over a household???s life span should hold globally. Yet, our second assumption about how housing services are being offered across metropolitan regions is US-based and in order for this model to work in other context, this assumption needs to be modified accordingly". 
+Which, again, I think, is helpful.
+
+
+
+##QUESTION 2
+```{r}
+
+library(testthat)
+## Note that this code uses the XML package rather than xml2 and rvest
+## simply because I had this code sitting around from a previous demonstration.
+
+## @knitr download
+
+moderators <- c("LEHRER", "LEHRER", "LEHRER", "MODERATOR", "LEHRER", "HOLT")  
+
+candidates <- rbind(c(Dem = "CLINTON", Rep = "TRUMP"),
+                   c(Dem = "OBAMA", Rep = "ROMNEY"),
+                   c(Dem = "OBAMA", Rep = "MCCAIN"),
+                   c(Dem = "KERRY", Rep = "BUSH"),
+                   c(Dem = "GORE", Rep = "BUSH"),
+                   c(Dem = "CLINTON", Rep = "DOLE"))
+
+
+library(XML)
+library(stringr)
+library(assertthat)
+
+url <- "http://www.debates.org/index.php?page=debate-transcripts"
+
+yrs <- seq(1996, 2012, by = 4)
+type <- 'first'
+main <- htmlParse(url)
+listOfANodes <- getNodeSet(main, "//a[@href]")
+labs <- sapply(listOfANodes, xmlValue)
+inds_first <- which(str_detect(labs, "The First"))
+## debates only from the specified years
+inds_within <- which(str_extract(labs[inds_first], "\\d{4}")
+                     %in% as.character(yrs))
+inds <- inds_first[inds_within]
+## add first 2016 debate, which is only in the sidebar
+ind_2016 <- which(str_detect(labs, "September 26, 2016"))
+inds <- c(ind_2016, inds)
+debate_urls <- sapply(listOfANodes, xmlGetAttr, "href")[inds]
+
+n <- length(debate_urls)
+
+assert_that(n == length(yrs)+1)
+
+## @knitr extract
+
+debates_html <- sapply(debate_urls, htmlParse)
+
+get_content <- function(html) {
+  # get core content containing debate text
+  contentNode <- getNodeSet(html, "//div[@id = 'content-sm']")
+  if(length(contentNode) > 1)
+    stop("Check why there are multiple chunks of content.")
+  text <- xmlValue(contentNode[[1]])
+  # sanity check:
+  print(xmlValue(getNodeSet(contentNode[[1]], "//h1")[[1]]))
+  return(text)
+}
+
+debates_body <- sapply(debates_html, get_content)
+```
+
+
+
+I decided to do all the analyses we need to do on the basis of year (names are repeated, in some instance the moderator is literally refered to as "moderator", etc). My basic plan was to make several small functions. I ended up calling a function inside functions many times, so that that particular function would work on its own.
+
+
+
+```{r}
+library(stringr)
+required_year <- function(x) {
+  'if'(!(x %in% seq(2016, 1996, by = -4)), {print("Please enter an election year between 1996 and 2016.")},{
+  y <- (-0.25*x) + 505
+  transcript = str_replace_all(debates_body[y],"(\n)+"," ")
+  return(transcript)})
+  expect_gt(nchar(transcript),1)
+  } 
+```
+
+As an example, I'm working with the 2004 data. Also, instead of combining all the data into one dataframe, I thought it would be better if I get all the data for any specific year by using generalisable functions.
+
+
+
+
+#_____restructuring the data_____
+
+My idea is to map every year to an index in the table that I created, which consists of democractic candidate, republican candidate, and moderator, as they appear in the transcripts.
+
+```{r}
+N = 6 #set this to the number of elections years we are analysing
+candidates <- rbind(c(Dem = "CLINTON", Rep = "TRUMP"),
+                                         c(Dem = "OBAMA", Rep = "ROMNEY"),
+                                         c(Dem = "OBAMA", Rep = "MCCAIN"),
+                                         c(Dem = "KERRY", Rep = "BUSH"),
+                                        c(Dem = "GORE", Rep = "BUSH"),
+                                        c(Dem = "CLINTON", Rep = "DOLE"))
+
+moderators <- rbind("HOLT","LEHRER","LEHRER","LEHRER","MODERATOR","LEHRER")
+tableOfSpeakers <- cbind(candidates, moderators)
+
+#So now, starting from 2016, the speakers are in order till 2016. 
+
+```
+
+
+#_____finding out markers for the transcript, according to the year._____
+
+Every chunk starts with the name of the speakers, which I then use to separate the data into literal chunks. First I find the index of the chunks. I get an n by 2 matrix. I dont need the second column. So I weed it out.
+
+```{r}
+library(stringr)
+
+  
+find_markers <- function(x){
+  if (!(x %in% seq(2016, 1996, by = -4))) {
+      print("Please enter an election year between 1996 and 2016, else expect an error message!")
+      
+  }
+  else {  
+  y <- (-0.25*x) + 505
+  transcript <- required_year(x)
+  pattern <- paste(tableOfSpeakers[y, ],":", sep="",collapse="|")  ##the names of the speakers made regex frieNDLY
+  markers <- str_locate_all(transcript, pattern)
+  markers <- markers[[1]] ##unnesting it
+  markers <- markers[ ,1] #Now markers has the starting index of when a particular speaker starts talking.
+  expect_is(markers, "integer")
+  return(markers)
+  }}
+
+
+#Now creating the metadata 
+
+listOfMarkers <- function(){
+  temp = list()
+  
+  for (i in seq(2016, 1996, by = -4)){
+    j <- (-0.25*i) + 505
+    temp[[j]] <- find_markers(i)
+    names(temp)[[j]] <- paste(i) #changing index to the year.
+  }
+  
+  temp
+  
+}
+expect_length(listOfMarkers(),nrow(tableOfSpeakers))
+listOfMarkers()["2012"]
+```
+
+So the idea hopefully is clear. I am executing each activity for a particular year, which can then be collated to a bigger database with just a few lines of code.
+
+Example year:
+```{r}
+markers <- find_markers(2004)
+
+```
+
+
+#_____segregating the transcript according to markers._____
+
+Now I get the actual chunks by the index matrix I just created.
+
+```{r}
+get_chunks <- function(x){
+  
+  markers <- find_markers(x)
+  transcript <- required_year(x)##so that "markers" and "transcript" exist in the function"
+ 
+  s <- ((-0.25)*x) + 505   #to help me index through the table
+  l <- length(markers)
+  chunks <- vector(mode = "character", length = l) #initialise a character vector
+  
+  #we substract one to make sure the first letter of the next marker isnt included
+  for (i in 1:(l-1)){
+    chunks[i] <- substr(transcript,markers[i],markers[i+1]-1)
+    }                                                                             
+  chunks[l] <- substr(transcript,markers[l],nchar(transcript))
+  return(chunks)
+}
+
+#Example year
+chunks <- get_chunks(2004)
+
+```
+#_______________
+
+
+Collating same speakers: I compare the first word of consecutive chunk, which is the name of the speaker. If its the same, i collate it, and pop out the second one. 
+The reason i'm not looping through the length of chunks is that I was afraid that if the length reduces, it might break the code? 
+
+
+
+```{r}
+collate = TRUE  ##Set this to false if you don't want to collate
+while (collate){
+     i <- 1
+     
+     while (i > 0){
+     if (word(chunks[i],1) == word(chunks[(i+1)],1)){
+          chunks[i] = paste(chunks[i], chunks[i+1], sep = " ");
+          chunks <- chunks[-(i+1)];
+           }
+     i <- i+1;
+  
+     if (i == length(chunks)){
+          break
+     }
+     }
+     break
+}
+
+
+```
+
+#________________
+  
+Creating a nested list of chunks indexed by speaker name:
+
+```{r}
+final_output <- function(x){
+  'if'(!(x %in% seq(2016, 1996, by = -4)), {print("Please enter an election year between 1996 and 2016.")},{
+    chunks <- get_chunks(x)
+    s <- (-0.25*x) + 505
+    final <- list(chunks[sapply(chunks,function(m) grepl(paste(tableOfSpeakers[s,1]),m))],  #Look for the speakers from that year
+                  chunks[sapply(chunks,function(m) grepl(paste(tableOfSpeakers[s,2]),m))],
+                  chunks[sapply(chunks,function(m) grepl(paste(tableOfSpeakers[s,3]),m))])
+    names(final) = c(str_to_title(paste(tableOfSpeakers[s,1])), str_to_title(paste(tableOfSpeakers[s,2])),           str_to_title(paste(tableOfSpeakers[s,3])))
+    expect_length(final,3)
+    is.null(final)
+    return(final)
+  })}
+
+
+#____________________________
+
+##for all the years
+listOfFinalChunks <- function(){
+  temp = list()
+  for (i in seq(2016, 1996, by = -4)){
+    j <- (-0.25*i) + 505
+    temp[[j]] <- final_output(i)
+    names(temp)[[j]] <- paste(i)
+  }
+ temp
+}
+
+expect_length(listOfFinalChunks(),N)
+
+
+##Printing out the number of each candidate's responses.
+
+want_all_responses = TRUE #could set to false
+
+while (want_all_responses){
+  for (i in seq(2016, 1996, by = -4)){
+      for (j in seq(1,2)){
+       stat <- sprintf("Candidate %s had %d responses.", names(listOfFinalChunks()[paste(i)][[1]])[[j]],                                        length(listOfFinalChunks()[paste(i)][[1]][[j]]));
+       print(stat)
+      }
+  }
+  break
+}
+
+
+
+
+#____________________________
+
+
+#Example year
+final <- final_output(1996)
+names(final)
+head(final$Dole)
+```
+
+
+##________________________________________
+
+
+#Counting laughter and applause.
+
+I create a function that takes a list of strings and counts the number of occurrences of the words we want.
+.
+
+```{r}
+laugh <- function(y){
+  sum(sapply(y, function(x) str_count(x, "\\[|\\(laughter\\]|\\)|\\[|\\(LAUGHTER\\]|\\)")))
+}
+
+applause <- function(y){
+  sum(sapply(y, function(x) str_count(x, "\\[|\\(applause\\]|\\)|\\[|\\(APPLAUSE\\]|\\)")))
+}
+
+count_laughter_applause<- function(x){
+  'if'(!(x %in% seq(2016, 1996, by = -4)), {print("Please enter an election year between 1996 and 2016.")},{
+  s <- (-0.25*x) + 505
+  final <- final_output(x)
+  for (m in seq(1,2)){
+      stat <- sprintf("Candidate %s got %d laughs and %d applauses", names(final)[m], laugh(final[[m]]), applause(final[[m]]))
+      print(stat)
+  }})}
+
+count_laughter_applause(2004)
+count_laughter_applause(1996)
+```
+
+I also created a nested list for all the years, where the data for every year can be easily accessed through index.
+
+```{r}
+laughter_applause <- function(x){
+  row <- list()
+  for (i in seq(2016, 1996, by = -4)){
+    y <- (-0.25*i) + 505
+    
+    final <- final_output(i)
+    temp <- list()
+    for (j in seq(1,2)){
+      
+      temp[[j]] <- rbind(names(final)[j], laugh(final[[j]]), applause(final[[j]]))
+      
+    }
+    row[[y]] <- temp
+    names(row)[[y]] <- paste(i)
+    }
+row
+}
+
+laughter_applause()["2008"]
+```
+#_____________
+
+
+###Removing silly symbols, and the laughter and applause.
+
+```{r}
+strip_all <- function(x){
+  sapply(x, function(y) str_replace_all(y,"\\[|\\(laughter\\]|\\)|\\[|\\(LAUGHTER\\]|\\)|\\[|\\(applause\\]|\\)|\\[|\\(APPLAUSE\\]|\\)|(\\(|\\[).+(\\)|\\])|",""))
+}
+
+##creating a clean data set.
+
+for (i in seq(1,2)){
+  final[[i]] <- as(strip_all(final[[i]]),"list")
+}
+
+cleandata <- listOfFinalChunks()
+
+for (i in seq(2016, 1996, by = -4)) {
+  for (j in seq(1,2)) {
+    cleandata[paste(i)][[1]][[j]] = as.list(strip_all(cleandata[paste(i)][[1]][[j]]))
+  }
+}
+
+expect_length(cleandata, N)
+```
+
+
+#__________________________________
+
+
+#Storing all the words, characters and sentences for the candidates.
+
+I use the str method "boundary". It extracts out words, characters and even sentences. I love this method.
+
+```{r}
+words <- function(x){
+  temp <- sapply(x, function(y) str_split(y, boundary("word"))) ##extract all words from each chunk of the list
+  names(temp) = NULL
+  return(unlist(temp))
+}
+
+head(words(final$Dole))
+
+sen <- function(x){
+  sentences <- sapply(x, function(y) str_split(y,"\\.")) ##split by "." 
+  temp <- unlist(sentences)
+  names(temp) = NULL
+  return(temp[lapply(temp,function(y) str_count(y))>1]) ##remove chunks of one letter
+}
+head(sen(final$Dole))
+
+char <- function(x){
+ m <-gsub("[[:space:]]?", "", x) ##remove all white spaces
+ characters <- sapply(m, function(y) str_split(y, boundary("character"))) ##str_trim first removes the white spaces, then stores the characters.
+ names(characters) = NULL
+ return(unlist(characters))
+ }
+
+avg_word <- function(x){
+  return(round(length(char(x))/length(words(x)),2))
+}
+
+
+counting_stuff <- function(x) {
+  if (!(x %in% seq(2016, 1996, by = -4))) {print("Please enter an election year between 1996 and 2016.")}
+      else {
+  y <- (-0.25*x) + 505;
+  ##create the dataset
+  col <- data.frame(matrix(1:10, nrow = 5, ncol = 2),row.names=c("name","words spoken","sentences","characters", "average word length"),stringsAsFactors=FALSE)
+  final <- final_output(x)
+  for (i in seq(1,2)){
+  temp <-rbind(names(final)[[i]],length(words(final[[i]])),length(sen(final[[i]])),length(char(final[[i]])), avg_word(final[[i]]))
+  col[i] <- temp}
+  colnames(col) <- c("Democratic Candidate", "Republican Candidate")
+  return(col)}}
+
+
+
+
+tableOfCount <- counting_stuff(2004)
+counting_stuff(2008)
+
+
+
+
+listOfTableOfCount = list()
+for (i in seq(2016, 1996, by = -4)){
+  j <- (-0.25*i) + 505
+  listOfTableOfCount[[j]] <- counting_stuff(i)
+  names(listOfTableOfCount)[[j]] <- paste(i)
+}
+listOfTableOfCount
+```
+
+The avergae word count remains the same in almost all cases (4.5), which is the average word count of the English language. The republican candidate always utters more sentences.
+
+
+##Creating another list to store the actual words and characters of each candidate
+
+```{r}
+store_stuff <- function(x){
+  
+  dat <- list()  #initialise a list
+  final <- final_output(x) #get the "final" list (in case that function hasn't been called)
+
+  'if'(!(x %in% seq(2016, 1996, by = -4)), {print("Please enter an election year between 1996 and 2016.")},{
+  s = (-0.25*x) + 505
+
+  for (i in seq(1,2)){
+       temp <- list(words(final[[i]]), char(final[[i]]))
+       dat[[i]] <- temp
+  }
+
+
+  names(dat) = c(paste(tableOfSpeakers[s,1]), paste(tableOfSpeakers[s,2]))
+  return(dat)
+  })}
+
+
+##creating metadata using this function, easily indexable by year
+
+listOfWordsAndChars = list()
+for (i in seq(2016, 1996, by = -4)){
+  j <- (-0.25*i) + 505
+  listOfWordsAndChars[[j]] <- store_stuff(i)
+  names(listOfWordsAndChars)[[j]] <- paste(i)
+}
+  
+store_stuff(2005)
+
+
+
+
+```
+   
+####________________________________________________________________
+
+
+#Function to Create frequencies and histograms by year
+
+I create a function that looks for the words specified in the question, uses plyr package to calculate frequencies, and then finally loops through to create a list of those words and plots a graph for each candidate. 
+
+```{r, figure.align = "center", figure.height = 5, figure.width = 5}
+candidateFig <- function(x){
+    if (!(x %in% seq(2016, 1996, by = -4))) {
+      print("Please enter an election year between 1996 and 2016.")
+    }
+    
+    else {
+      library(plyr)
+      library(grid)
+      library(gridBase)
+      s <- (-0.25*x) + 505
+      final <- final_output(x)
+      pattern <- "i|we|(america|american)|(democracy|democratic)|republic|democrat|republican|(free|freedom)|war|god|god bless|(jesus|christ|christian)"
+      
+      word_frequencies = list() #it's easier to add stuff to a list
+      for (i in seq(1,2)){
+          temp_1 <- str_to_lower(words(final[i]))
+          temp_2 <- grep(paste("^(",pattern,")$",sep=""), temp_1, value = TRUE)
+          word_freq = plyr::count(temp_2) %>% arrange(desc(freq))
+          word_frequencies[[i]] = word_freq
+          fig <- barplot(word_freq$freq, ylab= "Frequency" ,
+                         main = paste("Candidate",names(final)[[i]]), col=rainbow(20))
+          vps <- baseViewports() 
+          pushViewport(vps$inner, vps$figure, vps$plot)
+          grid.text(word_freq$x,
+                    x = unit(fig, "native"), y=unit(-1, "lines"),
+                    just="right", rot=90)
+          
+          popViewport(3)
+          cat("\n")
+          
+       }
+      names(word_frequencies) = c("Democratic Candidate","Republican Candidate")
+      return(word_frequencies)}}
+
+candidateFig(2004)
+candidateFig(2016)
+
+
+```
+
+I noticed consistently that for each year, the republican candidate utters "i" more times than "we", and the democratic candidate utters "we" more. War is commonly mentioned by both parties.
+
+##____________
+
+##QUESTION 3
+
+From an Object Oriented approach, we could have a Debate class. This class could have the following attributes:
+1. No of Speakers
+2. No of Moderators
+3. No of Adjudicators
+
+A "presidential" debate would then be a subclass where there are two speakers and one moderator and zero adjudicator. 
+
+The data we would therefore need (fields) this object to represent are:
+
+1. The year in which it takes place
+2. The moderator
+3. The candidates, and the parties to which they belong
+4. Their actual responses
+5. The location of the debate
+
+.
+
+The methods on the debate could be:
+
+1. Segregate: Group by speaker. - returns a list of responses
+2. Word count: Count the words spoken by each speaker. - returns an integer
+3. Specific word count - specify a word and count how many times each speaker said it
+4. Interruptions - count interruptions/ crosstalk
+5. Fact-Check (I'm not entirely sure how that could work though).
+
+
+
