@@ -5,12 +5,15 @@ date: "10/5/2018"
 output:
   html_document:
     df_print: paged
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(pryr)
 library(microbenchmark)
+library(rbenchmark)
+
 ```
 
 #Question 1
@@ -113,11 +116,11 @@ head(selection) ##selection is the required sample
 Now, to test the efficiency of the new solution:
 
 ```{r}
-microbenchmark({
+microbenchmark("vectorised" = {
                sumrow <- probs %*% upper.tri(diag(p), diag = TRUE) / rowSums(probs);
                i <- rowSums(l > sumrow) +1L;
-               selection <- s[i]},  for(i in seq_len(n)){
-                 smp[i] <- sample(p, 1, prob = probs[i, ])}, times = 25)
+               selection <- s[i]},  "non vectorized" = for(i in seq_len(n)){
+                 smp[i] <- sample(p, 1, prob = probs[i, ])})
 ```
 
 It's a lot, lot faster.
@@ -126,6 +129,8 @@ It's a lot, lot faster.
 #Question 3
 
 ###part(a)
+
+We use the log scale because N choose k becomes too big for R to compute. (so it might display "inf").
 
 Using the standard vapply function to calculate the denominator:
 
@@ -165,13 +170,13 @@ new <- function(k, n, p, phi) {
 
 
 n <- 200
-microbenchmark(sum(new(0:n, n)), applyWay(n), times = 20)
+microbenchmark("vectorized" = sum(new(0:n, n)), "non vectorised"= applyWay(n))
 
 n <- 2000
-microbenchmark(sum(new(0:n, n)), applyWay(n), times = 20)
+microbenchmark("vectorized" = sum(new(0:n, n)), "non vectorized" = applyWay(n))
 
 n <- 1000
-microbenchmark(sum(new(0:n, n)), applyWay(n), times = 20)
+microbenchmark("vectorised" = sum(new(0:n, n)), "non vectorised" = applyWay(n))
 ```
 
 The vectorised function is much faster.
