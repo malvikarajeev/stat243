@@ -1,0 +1,144 @@
+---
+title: "ps7"
+author: "Malvika Rajeev"
+date: "11/13/2018"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Question 1
+In general, the smaller the standard error, the more precise the estimate, because it signifies how much variability surrounds an estimate. One way to deal with the unvertainty is to develop confidence intervals for the true value of the coefficients using CLT.
+The mean squared error can also be considered, which ideally should be converging to zero. 
+
+We could calculate the distribution of the estimated coefficients and calculate its mean, variance and standard error etc using monte carlo.
+
+
+##Question 2
+#Suppose I have a very large dataset, with n = 1 x (10^9) so I have n observations and an n x p matrix X of predictors, where p = 8.
+
+#(a) Ordinarily, how much memory would the dataset take up?
+
+If we assume that the entries are double precision floats, then approximately 64 GB. (1 entry = 8 bytes) (or 32 GB if they are stored as integers).
+
+#(b) Now suppose that there are only 10000 unique combinations of the p covariates. Given what you know about data structures in R, how could you store the data to use up much less memory? How much memory would be used by your solution?
+
+Save a 10000 by 8 matrix, with every row representing a unique combination. Then create a 'pointer' (a $10^9$ x 1 matrix)(so this representation will take up 4*$10^9$ bytes, aprx 4 GB.), with element containing the row number of the unique combination it represents. And we'll need a vector of dimensions 10000 by 8 to store the unique combinations, so that'll be around 640000 bytes. 
+
+
+#(c) Now suppose you need to run lm(), glm(), etc. on this data. Why would all of your work in part (b) go to waste?
+
+Lm() and glm() will anyway make a copy of that big dataset to perform computations. Also, we need a y lm(y~x) in which case y will have $10^{9}$ rows anyway. 
+
+
+#(d) If you need to find the OLS, $(X^{T}X)^{-1}X^{T}Y$ estimator here, how could you code this up (please provide pseudo-code; you don???t need to write any R code)  so that you do not need to use up the full memory and can take advantage of your data structure(s).
+
+We represent X as a matrix product of the index matrix (N) and the 'helper' (H)  matrix (which is the unique row combinations). The index matrix wil be $10^9$ by $10^4$, where every row has a '1' corresponding to which combination of the row of the helper matrix it represents. 
+
+
+So   X = N * H.
+
+Also $X^{T}X$ = $H^{T}N^{T}NH$. Also $W = N^TN$ will be a $10^4$ diagonal matrix, with every diagonal element representing the weight of the combinations. (So the first diagonal element will represent how many times the first unique combination in the helper matrix A is represented). 
+
+$X^{T}X$ = $H^{T}WH$, and also,
+Since W is a diagonal matrix with positive coefficients, we can find its square root easily by just squaring the diagonal elements. So, let $V = W^{\frac{1}{2}}$.
+
+The right hand side of the OLS equation becomes $(VH)^{T}VH\beta$. 
+
+The left hand side becomes $(VH)^{T}V^{-1}(N^{T}y)$. Let $P = VH$, so we get
+$P^{T}P\beta = P^{T}y'$
+
+Then we can use QR decomposition on VH.
+
+V' = qr(X)
+Q = qr.Q(V')
+R = qr.R(V')
+
+
+Treat right hand side as y. 
+Then backsolve for R. 
+
+
+
+
+
+#Question 3
+
+I'm writing the pseudo-code and R code together. 
+Algebraically, to make it efficient, let $\Sigma$ be decomposed into $\Sigma^{\frac{1}{2}}$ using cholesky. 
+
+```{r eval = FALSE}
+gls <- function(X, Y sigma){
+  s<- chol(sigma)
+  S <- backsolve(s,diag(nrow(s))) #backsolve to get the inverse of s.
+  Z = S%*%X    #new X
+  Y2 = S%*%Y    #new Y
+  N = qr(Z) #QR decomposition of Z
+  Q = qr.Q(N) 
+  R = qr.R(N)
+  soln = backsolve(R, crossproduct(Q,Y2)
+  soln}
+
+
+```
+
+The original expression can be written as solving $(Z^{T}Z)\beta$ = $Z^{T}S$
+Where $S = UY$ and $Z = UX$.(Where U is the inverse of the square root of sigma) Then use QR decomposition on Z. 
+
+      
+#Question 4
+
+Count the number of computations for
+
+(a) transforming AZ = I to UZ = I*.
+Transforming A to U requires $\frac{n^{3}}{3}$ operations.
+Transforming I to I*, which is basically transforming the inverse row operations on I, will require $n^{3}$ operations. So thats a total of $\frac{4n^{3}}{3}$ operations. 
+
+(b) for solving for Z given UZ = I*.
+We get n*$\sum_{i=1}^{n}i$ operations, so it turns out to be $\frac{n^{2}(n+1)}{2}$
+
+(c) for calculating x = Zb.
+this would be $n^2$.
+
+So total is $\frac{11n^{3}+3n^{2}}{6}$, which is a lot costlier. 
+
+
+#Question 5
+
+Compare the speed of b = $X^{-1}y$ using: (a) solve(X)%*%y, (b) solve(X,y), and (c) Cholesky decomposition followed by solving triangular systems. Do this for a matrix of size 5000 x 5000 using a single thread, using a matrix X constructed from $W^{T}W$ where the elements of the n x n matrix W are generated independently using rnorm().  
+
+```{r}
+set.seed(1)
+n <- 5000
+y <- matrix(rnorm(n),n,1)
+W <- matrix(runif(n^2), n, n)
+X <- t(W) %*% W
+
+system.time(solve(X) %*% y)
+system.time(solve(X,y))
+
+normal <- solve(X,y)
+
+
+#(c) Cholesky decomposition followed by solving triangular systems.
+U <- chol(X)
+system.time( backsolve(U, backsolve(U, y, transpose = TRUE)))
+
+cholsolve <- backsolve(U, backsolve(U, y, transpose = TRUE))
+
+
+all.equal(normal, cholsolve)
+
+
+```
+Solve(X,y) is faster than Solve(x)%*%y, and the chol way() is obviously the fastest. 
+
+As far as orders are concerned, (solve(X) %*% y) HAS O($n^{3}$) + 0($n^{2}$). As discussed in class, solving cholesky decomposition is done in about ${\frac{n^{3}}{3}}$ flops, which is much more efficient.
+
+Also the results are numerically same, because all.equal() only allows for precision upto machine.epsilon. 
+The condition number of the calculation is approximately $10^{-8}$.
