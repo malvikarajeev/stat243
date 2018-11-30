@@ -1,0 +1,292 @@
+---
+title: "ps8"
+author: "Malvika Rajeev"
+date: "11/26/2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+#Question 1.
+
+Sample X from normal distribution centered at -4.
+target: truncated t-dist, $X < -4$.
+
+PART(A)
+```{r}
+
+m <- 10000 #sample size
+c <- -4 
+df <- 3 #degrees of freedom
+V <- 1 #variance 
+#generate M uniform values between 0 and 0.5, and get the inverse cdf. 
+x <- qnorm(runif(m, 0 , pnorm(c, mean=c)), mean=c)
+
+#get the value of the densities at f and g
+f <- dt(x, df=df)
+g <- dnorm(x, mean=-4, sd=V)
+
+#standardize everything by CDF at -4 
+f_n <- f/ pt(q=c, df=3)
+g_n <- g/ pnorm(q=c, mean=-4, sd=1)
+weights <- f_n/g_n
+hist(weights)
+expectedmean <- mean(weights*x)
+expectedmean
+
+var1 <- (1/m)*var(weights*x)
+var1
+```
+
+Ideally, we would want that the weights are very large only when X (from the proposal density) is very small. The variance of the first estimator is larger because of some extreme sample points that are pulling it up. The second estimator has more varied weights than the first one does.
+
+
+PART(B)
+```{r}
+set.seed(23)
+y <- qt( runif(m, 0, pt(c, ncp=c, df=1)),
+                      ncp=c, df=1)
+f2 <- dt(y, df=df)
+g2 <- dt(y, ncp=-4, df=1)
+fn2 <- f2 / pt(q=c, df=df) #normalize weights
+gn2 <- g2 / pt(q=c, ncp=c, df=1) # normalize weights
+weights <- fn2/gn2
+hist(weights)
+plot(y, weights)
+
+expectedmean <- mean(weights*y)
+expectedmean
+
+var2 <- (1/m)*var(weights*y)
+var2
+```
+
+
+
+#QUESTION 2
+
+Consider the "helical valley" function (see the ps8.R file in the repository). Plot slices of the function to get a sense for how it behaves (i.e., for a constant value of one of the inputs, plot as a 2-d function of the other two). Syntax for image(), contour() or persp() (or the ggplot2 equivalents) from the R bootcamp materials will be helpful. Now try out optim() and nlm() for finding the minimum of this function (or use optimx()). Explore the possibility of multiple local minima by using different starting points.
+
+```{r}
+set.seed(2)
+library(plotly)
+
+theta <- function(x1,x2) atan2(x2, x1)/(2*pi)
+
+
+f <- function(x) {
+  f1 <- 10*(x[3] - 10*theta(x[1],x[2]))
+  f2 <- 10*(sqrt(x[1]^2 + x[2]^2) - 1)
+  f3 <- x[3]
+  return(f1^2 + f2^2 + f3^2)
+}
+
+#visualising
+
+s <- seq(-2*pi, 2*pi, by=1/8*pi) # random values 
+
+
+combx3 <- expand.grid(x1=s, x2=s) # get every combination
+combx3$x3 <- pi/4 #fixing x3
+combx3 <- within(combx3, {
+  f1 <- 10*(x3 - 10*theta(x1,x2))
+  f2 <- 10*(sqrt(x1^2 + x2^2) - 1)
+  f3 <- x3
+  func <- f1^2 + f2^2 + f3^2
+})
+
+combx1 <- expand.grid(x2=s, x3=s) 
+combx1$x1 <- pi/4
+combx1 <- within(combx1, {
+  f1 <- 10*(x3 - 10*theta(x1,x2))
+  f2 <- 10*(sqrt(x1^2 + x2^2) - 1)
+  f3 <- x3
+  func <- f1^2 + f2^2 + f3^2
+})
+
+combx2 <- expand.grid(x1=s, x3=s) 
+combx2$x2 <- pi/4
+combx2 <- within(combx2, {
+  f1 <- 10*(x3 - 10*theta(x1,x2))
+  f2 <- 10*(sqrt(x1^2 + x2^2) - 1)
+  f3 <- x3
+  func <- f1^2 + f2^2 + f3^2
+})
+
+plot_ly(combx2, x = ~x1, y = ~x3, z = ~func, type = 'scatter3d', mode = 'lines', line = list(width = 4))
+plot_ly(combx1, x = ~x2, y = ~x3, z = ~func, type = 'scatter3d', mode = 'lines', line = list(width = 4))
+plot_ly(combx3, x = ~x1, y = ~x2, z = ~func, type = 'scatter3d', mode = 'lines', line = list(width = 4))
+
+
+##optimization using optim and nlp
+opt_methods <- c("BFGS", "CG", "L-BFGS-B", "Nelder-Mead", "SANN")
+minval <- rep(NA, length(opt_methods))
+for (i in 1:length(opt_methods)){
+  cat(opt_methods[i],'results')
+  min <- optim(par=c(0.1,0.11,0.12), fn=f, method=opt_methods[i])
+  cat('\nThe minimizers are ', min$par)
+  cat('\nThe min is ', min$value,'\n')
+  minval[i] <- min$value
+}
+
+
+###Now NLM
+
+nlpMin <- nlm(f=f, p=c(0.1,0.11,0.12))
+print(nlpMin)
+
+cat("Does NLP have a lower minimum?", (min(minval) < nlpMin$minimum))
+
+
+```
+
+##QUESTION 3
+
+To fit the model $Y_i = Ber(\Phi(X^{T}_{i}\beta ))$. We can write the complete data model as: \n
+$Y_i|Z_{i},\beta = I(Z_{i}>0)$ and \n
+$Z_{i}|\beta = N(x_{i}^{T}\beta, 1)$.\n
+
+Also $P(Yi = 1|\beta) =$ $\int P(Yi = 1, Zi|\beta)dZi$
+
+$P(Z_{i}> 0|\beta) = P(Z_{i} - x^{T}_{i}\beta > - x^{T}_{i}\beta)$
+
+$1 - \Phi(- x^{T}_{i}\beta) = \Phi(x^{T}_{i}\beta)$
+
+And after computing the Q-function we can see that
+
+$Z_{i}|y_{i} = 0, \beta^{(t)} = TN(x^{T}_{i}\beta^{t},1;(\infty,0))$ \n
+
+$Z_{i}|y_{i} = 1, \beta^{(t)} = TN(x^{T}_{i}\beta^{t},1;(0,\infty)$
+
+So E step is:
+$Z^{t+1}_{i} = x_i\beta^{(t)} - \frac{\phi(x_i\beta^{(t)})}{\Phi(-x_i\beta^{(t)}))}$, if $y_{i}$ = 0 And
+
+$Z^{t+1}_{i} = x_i\beta^{(t)} + \frac{\phi(x_i\beta^{(t)})}{1 - \Phi(-x_i\beta^{(t)}))}$, if $y_{i}$ = 1.
+
+And the M step is to maximimise:
+
+$\beta^{(t+1)} = (X^{T}X)^{-1}X^{T}Z^{(t+1)}$
+which can be done efficiently using QR decomposition.
+
+Also, the function can use input argument as tolerance level. 
+
+
+_____________________________________________________________
+
+a.
+```{r}
+set.seed(2)
+
+##the actual function
+##the actual function
+em_function <- function(betastart, X, Y, maxits, tol = 0.00001){
+  iterations <- 0 
+  beta_current = betastart
+  M <- X %*% beta_current #Mean 
+  converged <- FALSE
+  Z <- rnorm(length(Y), mean=M)
+  
+  # QR Decomposition for OLS
+  # using QR decomposition to get the Q, R matrix
+  
+  X.qr <- qr(X)
+  Q <- qr.Q(X.qr)
+  R <- qr.R(X.qr)
+  
+  while((!converged) && iterations < maxits){
+    # run this until iterations done or convergence occurs
+    ##E-STEP  
+    Z_t_p = Z
+    Z = ifelse(Y==1, M + dnorm(M)/pnorm(M),
+               M - dnorm(M)/pnorm(-M)) # Define Z as per value of Y (1 or 0)
+    
+    varZ <- ifelse(Y==1, 1 - M*dnorm(M)/pnorm(M)-(dnorm(M)/pnorm(M))^2,
+                    1 + M*dnorm(-M)/pnorm(-M)-(dnorm(-M)/pnorm(-M))^2) 
+    ## formula for variance of truncated normal 
+    
+    # M step using QR decomposition that we've done
+    
+    beta_new = backsolve(R,crossprod(Q,Z)) 
+    M = X %*% beta_new
+    ll = -(1/2)*sum(varZ + Z^2) - # M^2 + sigma^2 ##log-likelihood
+                  (1/2)*crossprod(M) + #t(M) * M
+                    crossprod(Z , M) - # t(Z) * M
+                      n*log(sqrt(2*pi))
+    
+    converged <- (max(abs(Z_t_p - Z)) <= tol)
+    iterations <- iterations + 1
+  }
+  if (converged == TRUE){print("Convergence reached")} else {print("Convergence not reached")}
+  return(list(ll=ll, startingval = betastart, betas=beta_new, converged=converged,
+              
+              iterations=iterations))
+  
+}
+
+
+```
+
+
+
+
+(b) For starting values I took $\beta = (0.25,0.25,0,0).$ It's convenient to take $\beta_i = \frac{1}{c}$, where $\Sigma = c$.
+
+
+
+
+
+```{r}
+
+##(c)
+
+
+set.seed(2)
+
+n <- 100
+#generating data
+sample_data <- data.frame(x1 = rnorm(n), x2 = rnorm(n), 
+                          x3= rnorm(n), y = sample(c(0,1),n
+                                                      ,replace=TRUE)) 
+
+##adding noise
+sample_data$x1 <- sample_data$x1 + sample_data$y 
+
+
+probit <- glm(y~., data=sample_data, family=binomial(link = "probit")) 
+summary(probit)
+
+
+X <- as.matrix(cbind(1, sample_data[,1:3])) ##add a column of 1s for beta zero
+Y <- sample_data$y
+
+beta_start <- c(0.25,0.25,0,0)
+test <- em_function(betastart = beta_start, X=X, Y=Y, maxits =500)
+test$betas
+
+print(round(test$betas - coef(probit)))
+```
+
+
+(d)
+```{r}
+set.seed(1)
+loglikelihood <- function(beta, X, Y){
+  M = X %*% beta
+  ll = sum(Y*pnorm(M, log.p=T) + (1-Y)*pnorm(-M, log.p=T))
+  -ll
+} ##taking the negative of loglikelihood for optim
+
+
+
+optim_values <- optim(par=c(0.25,0.25,0,0), fn=loglikelihood,     X=X,Y=Y,method="BFGS",
+                      control=list(trace=TRUE))
+
+print(optim_values)
+print(optim_values$par)
+print(optim_values$counts)
+
+cat("Minimizing the loglikelihood reached convergence in ",optim_values$counts[1],"iterations. EM algorithm reached convergence in", test$iterations,"iterations.")
+
+```
+
+  
